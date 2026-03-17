@@ -4,6 +4,7 @@
 import {
   DIR, TILE_SIZE, PLAYER_SPEED, ENEMY_SPEED,
   BULLET_SPEED, PLAYER_SPAWN, PLAYER_MAX_BULLETS,
+  BULLET_SIZE,
 } from './constants';
 
 let nextId = 1;
@@ -72,7 +73,7 @@ export function createEnemy(spawnCol, spawnRow, type = 'basic') {
  */
 export function createBullet(tank) {
   const halfTank = tank.size / 2;
-  const bulletSize = 4;
+  const bulletSize = BULLET_SIZE;
   let bx, by;
 
   switch (tank.dir) {

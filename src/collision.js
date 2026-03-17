@@ -79,7 +79,7 @@ export function bulletTankCollision(bullet, tanks) {
     if (!tank.alive) continue;
     if (
       rectOverlap(
-        { x: bullet.x, y: bullet.y, w: 4, h: 4 },
+        { x: bullet.x, y: bullet.y, w: bullet.size, h: bullet.size },
         { x: tank.x, y: tank.y, w: tank.size, h: tank.size }
       )
     ) {

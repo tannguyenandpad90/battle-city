@@ -53,6 +53,8 @@ export default function BattleCity() {
   const animFrameRef = useRef(null);
   const levelCompleteTimerRef = useRef(0);
   const baseDestroyedRef = useRef(false);
+  const baseAliveRef = useRef(true);
+  const shootPressedRef = useRef(false);
   const stageIntroTimerRef = useRef(0);
   const menuMusicStartedRef = useRef(false);
 
@@ -100,6 +102,10 @@ export default function BattleCity() {
       setMuted(isMuted());
     }
 
+    if (e.key === ' ') {
+      shootPressedRef.current = true;
+    }
+
     // Prevent scrolling
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
       e.preventDefault();
@@ -126,6 +132,7 @@ export default function BattleCity() {
     lastSpawnTimeRef.current = Date.now();
     levelCompleteTimerRef.current = 0;
     baseDestroyedRef.current = false;
+    baseAliveRef.current = true;
     levelRef.current = lvl;
     setLevel(lvl);
   }, []);
@@ -203,15 +210,15 @@ export default function BattleCity() {
 
     if (moved) player.animFrame++;
 
-    // Shooting (Space)
-    if (keys[' ']) {
+    // Shooting (Space) - use separate ref so shooting works while holding movement keys
+    if (shootPressedRef.current) {
       if (player.activeBullets < player.maxBullets) {
         const bullet = createBullet(player);
         bulletsRef.current.push(bullet);
         player.activeBullets++;
         playShoot();
       }
-      keys[' '] = false; // One shot per press
+      shootPressedRef.current = false; // One shot per press
     }
   }, []);
 
@@ -324,6 +331,29 @@ export default function BattleCity() {
             decrementBulletCount(bullet);
             decrementBulletCount(other);
           }
+        }
+      }
+
+      // Eagle hit detection - check if bullet overlaps the 2x2 eagle area
+      if (bullet.alive && baseAliveRef.current) {
+        const eagleX = BASE_POS.col * TILE_SIZE;
+        const eagleY = BASE_POS.row * TILE_SIZE;
+        const eagleW = TILE_SIZE * 2;
+        const eagleH = TILE_SIZE * 2;
+        if (rectOverlap(
+          { x: bullet.x, y: bullet.y, w: bullet.size, h: bullet.size },
+          { x: eagleX, y: eagleY, w: eagleW, h: eagleH }
+        )) {
+          bullet.alive = false;
+          decrementBulletCount(bullet);
+          baseAliveRef.current = false;
+          baseDestroyedRef.current = true;
+          explosionsRef.current.push(
+            createExplosion(eagleX + TILE_SIZE, eagleY + TILE_SIZE, TILE_SIZE * 2)
+          );
+          playExplosion();
+          triggerScreenShake();
+          spawnParticles(eagleX + TILE_SIZE, eagleY + TILE_SIZE);
         }
       }
     }
@@ -466,6 +496,18 @@ export default function BattleCity() {
       return;
     }
 
+    // Level complete timer (must run even in LEVEL_COMPLETE state)
+    if (currentState === GAME_STATE.LEVEL_COMPLETE) {
+      levelCompleteTimerRef.current++;
+      if (levelCompleteTimerRef.current > 180) {
+        const nextLevel = levelRef.current + 1;
+        initLevel(nextLevel);
+        stageIntroTimerRef.current = STAGE_INTRO_DURATION;
+        setGameState(GAME_STATE.STAGE_INTRO);
+      }
+      return;
+    }
+
     if (currentState !== GAME_STATE.PLAYING) return;
 
     const player = playerRef.current;
@@ -517,12 +559,6 @@ export default function BattleCity() {
         playLevelComplete();
         setGameState(GAME_STATE.LEVEL_COMPLETE);
       }
-      if (levelCompleteTimerRef.current > 180) { // 3 seconds
-        const nextLevel = levelRef.current + 1;
-        initLevel(nextLevel);
-        stageIntroTimerRef.current = STAGE_INTRO_DURATION;
-        setGameState(GAME_STATE.STAGE_INTRO);
-      }
     }
   }, [handleInput, spawnEnemy, updateBullets, updatePowerUps, updateExplosions, updateSpawnAnims, initLevel]);
 
@@ -546,6 +582,7 @@ export default function BattleCity() {
         bullets: bulletsRef.current,
         explosions: explosionsRef.current,
         powerUps: powerUpsRef.current,
+        baseAlive: baseAliveRef.current,
       });
       drawHUD(ctx, scoreRef.current, livesRef.current, levelRef.current,
         ENEMIES_PER_LEVEL - enemiesSpawnedRef.current + enemiesRef.current.filter(e => e.alive).length,
@@ -564,6 +601,7 @@ export default function BattleCity() {
           bullets: bulletsRef.current,
           explosions: explosionsRef.current,
           powerUps: powerUpsRef.current,
+          baseAlive: baseAliveRef.current,
         });
       }
       drawGameOver(ctx, scoreRef.current);
