@@ -42,32 +42,39 @@ export function rectOverlap(a, b) {
 
 /**
  * Check bullet-tile collision and destroy bricks
- * Returns: { hit: boolean, destroyed: boolean }
+ * Checks ALL cells the bullet overlaps (up to 2x2)
+ * Returns: { hit: boolean, destroyed: boolean, baseHit: boolean }
  */
 export function bulletTileCollision(bullet, grid) {
-  const col = Math.floor(bullet.x / TILE_SIZE);
-  const row = Math.floor(bullet.y / TILE_SIZE);
+  const left = Math.floor(bullet.x / TILE_SIZE);
+  const right = Math.floor((bullet.x + bullet.size - 1) / TILE_SIZE);
+  const top = Math.floor(bullet.y / TILE_SIZE);
+  const bottom = Math.floor((bullet.y + bullet.size - 1) / TILE_SIZE);
 
-  if (row < 0 || row >= GRID_ROWS || col < 0 || col >= GRID_COLS) {
-    return { hit: true, destroyed: false };
+  let hit = false;
+  let destroyed = false;
+  let baseHit = false;
+
+  for (let row = top; row <= bottom; row++) {
+    for (let col = left; col <= right; col++) {
+      if (row < 0 || row >= GRID_ROWS || col < 0 || col >= GRID_COLS) {
+        hit = true;
+        continue;
+      }
+      const tile = grid[row][col];
+      if (tile === TILE.BRICK) {
+        grid[row][col] = TILE.EMPTY;
+        hit = true;
+        destroyed = true;
+      } else if (tile === TILE.STEEL) {
+        hit = true;
+      } else if (tile === TILE.BASE) {
+        hit = true;
+        baseHit = true;
+      }
+    }
   }
-
-  const tile = grid[row][col];
-
-  if (tile === TILE.BRICK) {
-    grid[row][col] = TILE.EMPTY;
-    return { hit: true, destroyed: true };
-  }
-
-  if (tile === TILE.STEEL) {
-    return { hit: true, destroyed: false };
-  }
-
-  if (tile === TILE.BASE) {
-    return { hit: true, destroyed: false, baseHit: true };
-  }
-
-  return { hit: false, destroyed: false };
+  return { hit, destroyed, baseHit };
 }
 
 /**

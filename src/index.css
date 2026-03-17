@@ -14,3 +14,14 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Phase 5d: Touch controls - hidden by default, shown on touch/small devices */
+.touch-controls {
+  display: none !important;
+}
+
+@media (pointer: coarse), (max-width: 768px) {
+  .touch-controls {
+    display: flex !important;
+  }
+}

@@ -10,6 +10,39 @@ import {
   ENEMIES_PER_LEVEL,
 } from './constants';
 
+// ---- Floating Text System ----
+const floatingTexts = [];
+
+export function addFloatingText(x, y, text, color = '#FFFFFF') {
+  floatingTexts.push({ x, y, text, color, life: 60, maxLife: 60 });
+}
+
+export function resetFloatingTexts() {
+  floatingTexts.length = 0;
+}
+
+function updateAndDrawFloatingTexts(ctx) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.y -= 1; // float upward
+    ft.life--;
+    if (ft.life <= 0) {
+      floatingTexts.splice(i, 1);
+      continue;
+    }
+    const alpha = ft.life / ft.maxLife;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = ft.color;
+    ctx.font = 'bold 14px "Press Start 2P", monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = ft.color;
+    ctx.shadowBlur = 5;
+    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.restore();
+  }
+}
+
 // ---- Particle System ----
 const particles = [];
 
@@ -55,6 +88,93 @@ export function triggerScreenShake() {
   shakeFrames = SCREEN_SHAKE_DURATION;
 }
 
+// ---- Phase 2a: Offscreen tile caching ----
+let tileCanvasNonGrass = null;
+let tileCanvasGrass = null;
+let tileDirty = true;
+
+export function markTilesDirty() {
+  tileDirty = true;
+}
+
+// ---- Phase 2c: Cached overlay canvases ----
+let scanlineCanvas = null;
+let vignetteCanvas = null;
+
+function ensureOverlayCanvases() {
+  if (!scanlineCanvas) {
+    scanlineCanvas = document.createElement('canvas');
+    scanlineCanvas.width = CANVAS_WIDTH;
+    scanlineCanvas.height = CANVAS_HEIGHT;
+    const sctx = scanlineCanvas.getContext('2d');
+    sctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
+    for (let y = 0; y < CANVAS_HEIGHT; y += 3) {
+      sctx.fillRect(0, y, CANVAS_WIDTH, 1);
+    }
+  }
+  if (!vignetteCanvas) {
+    vignetteCanvas = document.createElement('canvas');
+    vignetteCanvas.width = CANVAS_WIDTH;
+    vignetteCanvas.height = CANVAS_HEIGHT;
+    const vctx = vignetteCanvas.getContext('2d');
+    const cx = CANVAS_WIDTH / 2;
+    const cy = CANVAS_HEIGHT / 2;
+    const radius = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.7;
+    const gradient = vctx.createRadialGradient(cx, cy, radius * 0.4, cx, cy, radius);
+    gradient.addColorStop(0, 'rgba(0,0,0,0)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0.35)');
+    vctx.fillStyle = gradient;
+    vctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  }
+}
+
+// ---- Phase 2d: Cached background grid ----
+let bgGridCanvas = null;
+
+function ensureBgGridCanvas() {
+  if (!bgGridCanvas) {
+    bgGridCanvas = document.createElement('canvas');
+    bgGridCanvas.width = CANVAS_WIDTH;
+    bgGridCanvas.height = CANVAS_HEIGHT;
+    const bgctx = bgGridCanvas.getContext('2d');
+
+    bgctx.fillStyle = COLORS.BG;
+    bgctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Subtle grid pattern
+    bgctx.strokeStyle = 'rgba(30, 30, 60, 0.4)';
+    bgctx.lineWidth = 0.5;
+    const spacing = TILE_SIZE;
+    for (let x = 0; x <= CANVAS_WIDTH; x += spacing) {
+      bgctx.beginPath();
+      bgctx.moveTo(x, 0);
+      bgctx.lineTo(x, CANVAS_HEIGHT);
+      bgctx.stroke();
+    }
+    for (let y = 0; y <= CANVAS_HEIGHT; y += spacing) {
+      bgctx.beginPath();
+      bgctx.moveTo(0, y);
+      bgctx.lineTo(CANVAS_WIDTH, y);
+      bgctx.stroke();
+    }
+  }
+}
+
+export function resetRendererState() {
+  particles.length = 0;
+  floatingTexts.length = 0;
+  waterFrame = 0;
+  shakeFrames = 0;
+  // Reset tile cache
+  tileDirty = true;
+  tileCanvasNonGrass = null;
+  tileCanvasGrass = null;
+  // Reset overlay caches (they don't change, but reset for safety)
+  scanlineCanvas = null;
+  vignetteCanvas = null;
+  bgGridCanvas = null;
+}
+
 function applyScreenShake(ctx) {
   if (shakeFrames > 0) {
     shakeFrames--;
@@ -64,48 +184,10 @@ function applyScreenShake(ctx) {
   }
 }
 
-// ---- Background grid ----
+// ---- Background grid (now cached) ----
 function drawBackground(ctx) {
-  ctx.fillStyle = COLORS.BG;
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-  // Subtle grid pattern
-  ctx.strokeStyle = 'rgba(30, 30, 60, 0.4)';
-  ctx.lineWidth = 0.5;
-  const spacing = TILE_SIZE;
-  for (let x = 0; x <= CANVAS_WIDTH; x += spacing) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, CANVAS_HEIGHT);
-    ctx.stroke();
-  }
-  for (let y = 0; y <= CANVAS_HEIGHT; y += spacing) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(CANVAS_WIDTH, y);
-    ctx.stroke();
-  }
-}
-
-// ---- Scanline + Vignette overlay ----
-function drawScanlines(ctx) {
-  ctx.save();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.06)';
-  for (let y = 0; y < CANVAS_HEIGHT; y += 3) {
-    ctx.fillRect(0, y, CANVAS_WIDTH, 1);
-  }
-  ctx.restore();
-}
-
-function drawVignette(ctx) {
-  const cx = CANVAS_WIDTH / 2;
-  const cy = CANVAS_HEIGHT / 2;
-  const radius = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.7;
-  const gradient = ctx.createRadialGradient(cx, cy, radius * 0.4, cx, cy, radius);
-  gradient.addColorStop(0, 'rgba(0,0,0,0)');
-  gradient.addColorStop(1, 'rgba(0,0,0,0.35)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ensureBgGridCanvas();
+  ctx.drawImage(bgGridCanvas, 0, 0);
 }
 
 /**
@@ -212,6 +294,42 @@ function drawEagle(ctx, x, y, destroyed) {
 }
 
 /**
+ * Build offscreen tile canvases when tiles are dirty
+ */
+function buildTileCanvases(grid) {
+  // Non-grass canvas (brick, steel, base - but NOT water)
+  tileCanvasNonGrass = document.createElement('canvas');
+  tileCanvasNonGrass.width = CANVAS_WIDTH;
+  tileCanvasNonGrass.height = CANVAS_HEIGHT;
+  const ngCtx = tileCanvasNonGrass.getContext('2d');
+
+  // Grass canvas
+  tileCanvasGrass = document.createElement('canvas');
+  tileCanvasGrass.width = CANVAS_WIDTH;
+  tileCanvasGrass.height = CANVAS_HEIGHT;
+  const gCtx = tileCanvasGrass.getContext('2d');
+
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      const tile = grid[row][col];
+      const x = col * TILE_SIZE;
+      const y = row * TILE_SIZE;
+
+      switch (tile) {
+        case TILE.BRICK: drawBrick(ngCtx, x, y, col, row); break;
+        case TILE.STEEL: drawSteel(ngCtx, x, y); break;
+        case TILE.BASE: drawBase(ngCtx, x, y); break;
+        case TILE.GRASS: drawGrass(gCtx, x, y, col, row); break;
+        // WATER is NOT cached - drawn each frame
+        default: break;
+      }
+    }
+  }
+
+  tileDirty = false;
+}
+
+/**
  * Draw the entire game frame
  */
 export function draw(ctx, gameState) {
@@ -222,8 +340,16 @@ export function draw(ctx, gameState) {
 
   drawBackground(ctx);
 
-  // Draw tiles (except grass - drawn later on top)
-  drawTiles(ctx, grid, false);
+  // Build tile caches if dirty
+  if (tileDirty || !tileCanvasNonGrass || !tileCanvasGrass) {
+    buildTileCanvases(grid);
+  }
+
+  // Draw cached non-grass tiles (brick, steel, base)
+  ctx.drawImage(tileCanvasNonGrass, 0, 0);
+
+  // Draw water tiles separately (they animate)
+  drawWaterTiles(ctx, grid);
 
   // Draw eagle at base position (after tiles, before tanks)
   const eagleX = BASE_POS.col * TILE_SIZE;
@@ -261,8 +387,8 @@ export function draw(ctx, gameState) {
     if (bullet.alive) drawBullet(ctx, bullet);
   }
 
-  // Draw grass on top (tanks hide under grass)
-  drawTiles(ctx, grid, true);
+  // Draw cached grass on top (tanks hide under grass)
+  ctx.drawImage(tileCanvasGrass, 0, 0);
 
   // Draw explosions
   for (const exp of explosions) {
@@ -272,16 +398,35 @@ export function draw(ctx, gameState) {
   // Particles
   updateAndDrawParticles(ctx);
 
+  // Floating score texts
+  updateAndDrawFloatingTexts(ctx);
+
   // Player shield effect
   if (player.alive && (player.shielded || player.spawnTimer > 0)) {
     drawShield(ctx, player);
   }
 
-  // Overlays
-  drawScanlines(ctx);
-  drawVignette(ctx);
+  // Overlays (cached)
+  ensureOverlayCanvases();
+  ctx.drawImage(scanlineCanvas, 0, 0);
+  ctx.drawImage(vignetteCanvas, 0, 0);
 
   ctx.restore();
+}
+
+/**
+ * Draw only water tiles (animated, not cached)
+ */
+function drawWaterTiles(ctx, grid) {
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      if (grid[row][col] === TILE.WATER) {
+        const x = col * TILE_SIZE;
+        const y = row * TILE_SIZE;
+        drawWater(ctx, x, y);
+      }
+    }
+  }
 }
 
 /**
@@ -319,32 +464,6 @@ function drawSpawnAnimation(ctx, tank) {
   ctx.stroke();
 
   ctx.restore();
-}
-
-/**
- * Draw map tiles
- */
-function drawTiles(ctx, grid, grassOnly) {
-  for (let row = 0; row < GRID_ROWS; row++) {
-    for (let col = 0; col < GRID_COLS; col++) {
-      const tile = grid[row][col];
-      const x = col * TILE_SIZE;
-      const y = row * TILE_SIZE;
-
-      if (grassOnly) {
-        if (tile === TILE.GRASS) drawGrass(ctx, x, y, col, row);
-        continue;
-      }
-
-      switch (tile) {
-        case TILE.BRICK: drawBrick(ctx, x, y, col, row); break;
-        case TILE.STEEL: drawSteel(ctx, x, y); break;
-        case TILE.WATER: drawWater(ctx, x, y, col, row); break;
-        case TILE.BASE: drawBase(ctx, x, y); break;
-        default: break;
-      }
-    }
-  }
 }
 
 /**
@@ -503,51 +622,26 @@ function drawGrass(ctx, x, y, col, row) {
 }
 
 /**
- * Draw water tile with animated waves
+ * Phase 2b: Simplified water animation
  */
 let waterFrame = 0;
-function drawWater(ctx, x, y, col, row) {
+function drawWater(ctx, x, y) {
   const s = TILE_SIZE;
-
-  // Deep blue base
   ctx.fillStyle = COLORS.WATER_DARK;
   ctx.fillRect(x, y, s, s);
-
-  const time = waterFrame * 0.08;
-
-  // Multiple layers of wave animation
-  for (let wy = 0; wy < s; wy += 4) {
-    for (let wx = 0; wx < s; wx += 4) {
-      // Layer 1: slow large waves
-      const wave1 = Math.sin(time * 0.6 + (x + wx) * 0.04 + (y + wy) * 0.03) * 0.5 + 0.5;
-      // Layer 2: faster small waves
-      const wave2 = Math.sin(time * 1.2 + (x + wx) * 0.08 - (y + wy) * 0.06) * 0.3 + 0.5;
-      const combined = wave1 * 0.6 + wave2 * 0.4;
-
-      const r = 20;
-      const g = Math.floor(80 + combined * 100);
-      const b = Math.floor(180 + combined * 75);
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
-      ctx.fillRect(x + wx, y + wy, 4, 4);
+  // Simple animated waves - just 2-3 horizontal bars that shift
+  const offset = (waterFrame * 0.5) % s;
+  ctx.fillStyle = COLORS.WATER;
+  for (let i = 0; i < 3; i++) {
+    const wy = (y + i * (s / 3) + offset) % (y + s);
+    if (wy >= y && wy < y + s - 2) {
+      ctx.fillRect(x + 2, wy, s - 4, 2);
     }
   }
-
-  // White foam/highlight spots that move
-  ctx.fillStyle = COLORS.WATER_FOAM;
-  const foamX1 = x + ((Math.sin(time * 0.7 + col) + 1) * s * 0.35);
-  const foamY1 = y + ((Math.cos(time * 0.5 + row) + 1) * s * 0.3);
-  ctx.fillRect(foamX1, foamY1, 5, 2);
-
-  const foamX2 = x + ((Math.cos(time * 0.9 + col * 2) + 1) * s * 0.3);
-  const foamY2 = y + ((Math.sin(time * 0.6 + row * 2) + 1) * s * 0.35);
-  ctx.fillRect(foamX2, foamY2, 3, 2);
-
-  // Shimmer highlight
-  const shimmer = Math.sin(time * 2 + col * 1.5 + row * 1.3) * 0.5 + 0.5;
-  if (shimmer > 0.7) {
-    ctx.fillStyle = `rgba(255,255,255,${(shimmer - 0.7) * 0.5})`;
-    ctx.fillRect(x + s / 2 - 1, y + s / 3, 2, 1);
-  }
+  // One highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  const hx = x + ((waterFrame * 0.3 + x) % (s - 4));
+  ctx.fillRect(hx, y + s / 2, 4, 1);
 }
 
 export function tickWaterAnimation() {
@@ -935,7 +1029,7 @@ function drawPowerUps(ctx, powerUps) {
 /**
  * Draw HUD
  */
-export function drawHUD(ctx, score, lives, level, enemiesLeft, enemiesKilled) {
+export function drawHUD(ctx, score, lives, level, enemiesLeft, enemiesKilled, totalEnemies) {
   ctx.save();
   ctx.fillStyle = COLORS.HUD_BG;
   ctx.fillRect(CANVAS_WIDTH, 0, 160, CANVAS_HEIGHT);
@@ -972,7 +1066,8 @@ export function drawHUD(ctx, score, lives, level, enemiesLeft, enemiesKilled) {
   const barW = 128;
   const barH = 10;
   const killed = enemiesKilled || 0;
-  const progress = Math.min(killed / ENEMIES_PER_LEVEL, 1);
+  const total = totalEnemies || ENEMIES_PER_LEVEL;
+  const progress = Math.min(killed / total, 1);
   ctx.fillStyle = '#333333';
   ctx.fillRect(barX, barY, barW, barH);
   ctx.fillStyle = '#FF4500';
@@ -987,7 +1082,7 @@ export function drawHUD(ctx, score, lives, level, enemiesLeft, enemiesKilled) {
   ctx.fillText('KILLS', barX, barY + 24);
   const iconSize = 8;
   const iconsPerRow = 10;
-  for (let i = 0; i < killed && i < ENEMIES_PER_LEVEL; i++) {
+  for (let i = 0; i < killed && i < total; i++) {
     const row = Math.floor(i / iconsPerRow);
     const col = i % iconsPerRow;
     ctx.fillStyle = '#FF6347';
@@ -997,9 +1092,10 @@ export function drawHUD(ctx, score, lives, level, enemiesLeft, enemiesKilled) {
   // Controls hint
   ctx.fillStyle = '#888888';
   ctx.font = '10px monospace';
-  ctx.fillText('WASD/Arrows', xPos, CANVAS_HEIGHT - 100);
-  ctx.fillText('SPACE: Fire', xPos, CANVAS_HEIGHT - 80);
-  ctx.fillText('ENTER: Start', xPos, CANVAS_HEIGHT - 60);
+  ctx.fillText('WASD/Arrows', xPos, CANVAS_HEIGHT - 120);
+  ctx.fillText('SPACE: Fire', xPos, CANVAS_HEIGHT - 100);
+  ctx.fillText('ENTER: Start', xPos, CANVAS_HEIGHT - 80);
+  ctx.fillText('P/ESC: Pause', xPos, CANVAS_HEIGHT - 60);
   ctx.fillText('M: Mute', xPos, CANVAS_HEIGHT - 40);
 
   ctx.restore();
@@ -1008,7 +1104,7 @@ export function drawHUD(ctx, score, lives, level, enemiesLeft, enemiesKilled) {
 /**
  * Draw menu screen
  */
-export function drawMenu(ctx) {
+export function drawMenu(ctx, highScores) {
   ctx.fillStyle = COLORS.BG;
   ctx.fillRect(0, 0, CANVAS_WIDTH + 160, CANVAS_HEIGHT);
 
@@ -1033,12 +1129,29 @@ export function drawMenu(ctx) {
     ctx.fillText('PRESS ENTER TO START', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 100);
   }
 
+  // High scores
+  const scores = highScores || [];
+  if (scores.length > 0) {
+    ctx.shadowBlur = 5;
+    ctx.shadowColor = '#FFD700';
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 14px "Press Start 2P", monospace';
+    ctx.fillText('HIGH SCORES', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 140);
+
+    ctx.shadowBlur = 0;
+    ctx.font = '12px "Press Start 2P", monospace';
+    for (let i = 0; i < Math.min(scores.length, 5); i++) {
+      ctx.fillStyle = i === 0 ? '#FFD700' : '#AAAAAA';
+      ctx.fillText(`${i + 1}. ${scores[i]}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 165 + i * 20);
+    }
+  }
+
   // Tank art
   ctx.fillStyle = '#FFD700';
   ctx.shadowColor = '#FFD700';
   ctx.shadowBlur = 15;
   const cx = CANVAS_WIDTH / 2;
-  const cy = CANVAS_HEIGHT / 2 + 180;
+  const cy = scores.length > 0 ? CANVAS_HEIGHT / 2 + 165 + Math.min(scores.length, 5) * 20 + 30 : CANVAS_HEIGHT / 2 + 180;
   ctx.fillRect(cx - 16, cy - 20, 32, 32);
   ctx.fillRect(cx - 2, cy - 34, 4, 16);
   ctx.fillRect(cx - 20, cy - 18, 4, 28);
@@ -1050,7 +1163,7 @@ export function drawMenu(ctx) {
 /**
  * Draw game over screen
  */
-export function drawGameOver(ctx, score) {
+export function drawGameOver(ctx, score, highScores) {
   ctx.save();
   ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
   ctx.fillRect(0, 0, CANVAS_WIDTH + 160, CANVAS_HEIGHT);
@@ -1069,10 +1182,20 @@ export function drawGameOver(ctx, score) {
   ctx.font = '18px "Press Start 2P", monospace';
   ctx.fillText(`SCORE: ${score}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 80);
 
+  // Check if new high score
+  const scores = highScores || [];
+  if (scores.length > 0 && score >= scores[0]) {
+    ctx.shadowColor = '#FFD700';
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = '#FFD700';
+    ctx.font = 'bold 14px "Press Start 2P", monospace';
+    ctx.fillText('NEW HIGH SCORE!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 110);
+  }
+
   if (Math.floor(Date.now() / 500) % 2 === 0) {
     ctx.fillStyle = '#00FF00';
     ctx.font = '14px "Press Start 2P", monospace';
-    ctx.fillText('PRESS ENTER TO RETRY', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 130);
+    ctx.fillText('PRESS ENTER TO RETRY', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 150);
   }
 
   ctx.restore();
@@ -1126,5 +1249,25 @@ export function drawStageIntro(ctx, level, timer) {
   ctx.fillStyle = '#FFFFFF';
   ctx.font = '16px "Press Start 2P", monospace';
   ctx.fillText(name, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
+  ctx.restore();
+}
+
+/**
+ * Phase 5b: Draw paused overlay
+ */
+export function drawPaused(ctx) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH + 160, CANVAS_HEIGHT);
+  ctx.shadowColor = '#00FF00';
+  ctx.shadowBlur = 20;
+  ctx.fillStyle = '#00FF00';
+  ctx.font = 'bold 36px "Press Start 2P", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('PAUSED', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+  ctx.shadowBlur = 5;
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '14px "Press Start 2P", monospace';
+  ctx.fillText('Press P or ESC to resume', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 50);
   ctx.restore();
 }

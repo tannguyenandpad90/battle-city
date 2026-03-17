@@ -105,6 +105,7 @@ export const BASE_POS = { col: 12, row: 24 };
 export const GAME_STATE = {
   MENU: 'MENU',
   PLAYING: 'PLAYING',
+  PAUSED: 'PAUSED',
   GAME_OVER: 'GAME_OVER',
   LEVEL_COMPLETE: 'LEVEL_COMPLETE',
   STAGE_INTRO: 'STAGE_INTRO',
@@ -129,6 +130,7 @@ export const POWERUP = {
 
 export const POWERUP_DURATION = 10000; // ms for shield
 export const POWERUP_SPAWN_CHANCE = 0.3; // 30% chance on enemy kill
+export const SHIELD_DURATION_FRAMES = 600; // 10 seconds at 60fps
 
 // Particle / visual effect constants
 export const PARTICLE_COUNT = 12;        // sparks per explosion
@@ -138,3 +140,15 @@ export const SCREEN_SHAKE_DURATION = 12; // frames
 export const SCREEN_SHAKE_MAGNITUDE = 4; // pixels
 export const SPAWN_ANIM_DURATION = 90;   // frames (~1.5 sec at 60fps)
 export const STAGE_INTRO_DURATION = 120; // frames (~2 sec at 60fps)
+
+// Difficulty scaling function
+export function getLevelConfig(level) {
+  const l = Math.min(level, 9); // cap scaling at level 10
+  return {
+    enemyCount: Math.min(15 + l * 2, 30),
+    maxActive: Math.min(4 + Math.floor(l / 2), 8),
+    spawnInterval: Math.max(3500 - l * 200, 1500),
+    fastRatio: Math.min(0.1 + l * 0.05, 0.4),   // % of fast enemies
+    armorRatio: Math.min(0.05 + l * 0.05, 0.3),  // % of armor enemies
+  };
+}
