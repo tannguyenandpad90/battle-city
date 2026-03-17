@@ -83,6 +83,7 @@ export const GAME_STATE = {
   PLAYING: 'PLAYING',
   GAME_OVER: 'GAME_OVER',
   LEVEL_COMPLETE: 'LEVEL_COMPLETE',
+  STAGE_INTRO: 'STAGE_INTRO',
 };
 
 // Enemy config per level
@@ -104,3 +105,12 @@ export const POWERUP = {
 
 export const POWERUP_DURATION = 10000; // ms for shield
 export const POWERUP_SPAWN_CHANCE = 0.3; // 30% chance on enemy kill
+
+// Particle / visual effect constants
+export const PARTICLE_COUNT = 12;        // sparks per explosion
+export const PARTICLE_SPEED = 3;         // pixels per frame
+export const PARTICLE_LIFE = 20;         // frames
+export const SCREEN_SHAKE_DURATION = 12; // frames
+export const SCREEN_SHAKE_MAGNITUDE = 4; // pixels
+export const SPAWN_ANIM_DURATION = 90;   // frames (~1.5 sec at 60fps)
+export const STAGE_INTRO_DURATION = 120; // frames (~2 sec at 60fps)

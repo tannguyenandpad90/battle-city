@@ -95,7 +95,7 @@ export function bulletTankCollision(bullet, tanks) {
 export function tankTankCollision(tank, otherTanks) {
   const tankRect = { x: tank.x, y: tank.y, w: tank.size, h: tank.size };
   for (const other of otherTanks) {
-    if (other === tank || !other.alive) continue;
+    if (other.id === tank.id || !other.alive) continue;
     const otherRect = { x: other.x, y: other.y, w: other.size, h: other.size };
     if (rectOverlap(tankRect, otherRect)) {
       return true;

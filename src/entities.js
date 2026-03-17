@@ -27,6 +27,7 @@ export function createPlayer() {
     shieldTimer: 0,
     upgraded: false,
     spawnTimer: 60, // invulnerability frames on spawn
+    spawnAnimTimer: 0,
     animFrame: 0,
   };
 }
@@ -61,6 +62,7 @@ export function createEnemy(spawnCol, spawnRow, type = 'basic') {
     moveTimer: 0,
     shootTimer: 0,
     dirChangeTimer: 0,
+    spawnAnimTimer: 0,
     animFrame: 0,
   };
 }
